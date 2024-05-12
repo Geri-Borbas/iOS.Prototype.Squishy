@@ -9,100 +9,158 @@ import SwiftUI
 
 struct ContentView: View {
 
-    @State var position = CGPoint.zero
+    @State var controlPointPosition = CGPoint.zero
+
+    // Parameters.
+    @State var squish = Squish.linear
+    @State var multiplier = 0.5
+    @State var bouncesBack = true
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
 
-                // MARK: View
+        VStack {
 
-                Grid(
-                    rows: Metrics.rows,
-                    columns: Metrics.columns,
-                    color: .green.opacity(0.6)
-                )
-                .frame(size: Metrics.size)
-                .background(.green.opacity(0.2))
-                .frame(size: Metrics.Layer.size)
-                .background {
+            Spacer()
+
+            // MARK: Canvas
+
+            GeometryReader { geometry in
+                ZStack {
+
+                    // MARK: View
+
                     Grid(
-                        rows: Metrics.Layer.rows,
-                        columns: Metrics.Layer.columns,
-                        color: .green.opacity(0.2)
+                        rows: Metrics.rows,
+                        columns: Metrics.columns,
+                        color: .green.opacity(0.6)
                     )
-                }
-                .drawingGroup()
-
-                // Distorsion.
-                .squish(
-                    layerCenter: Metrics.Layer.size.center,
-                    anchorPoint: Metrics.Layer.size.center,
-                    controlPoint: position - geometry.center
-                )
-
-
-                // Layer border.
-                .border(.green.opacity(0.2))
-
-                // MARK: Debug
-
-                // View.
-                Rectangle()
-                    .stroke(.gray.opacity(0.5))
+                    .frame(size: Metrics.size)
+                    .background(.green.opacity(0.2))
+                    .frame(size: Metrics.Layer.size)
                     .background {
                         Grid(
-                            rows: Metrics.rows,
-                            columns: Metrics.columns,
-                            color: .gray.opacity(0.2)
+                            rows: Metrics.Layer.rows,
+                            columns: Metrics.Layer.columns,
+                            color: .green.opacity(0.2)
                         )
                     }
-                    .overlay {
-                        Circle()
-                            .stroke(.gray)
-                            .frame(width: 10, height: 10)
-                            .blendMode(.multiply)
-                    }
-                    .frame(size: Metrics.size)
-                    .blendMode(.multiply)
+                    .drawingGroup()
 
-                // Target view.
-                Rectangle()
-                    .stroke(.blue.opacity(0.5))
-                    .frame(size: Metrics.size)
-                    .position(position)
-                    .blendMode(.multiply)
+                    // Distorsion.
+                    .squish(
+                        layerCenter: Metrics.Layer.size.center,
+                        anchorPoint: Metrics.Layer.size.center,
+                        controlPoint: controlPointPosition - geometry.center,
+                        multiplier: multiplier,
+                        squish: squish
+                    )
 
-                // MARK: Dot
 
-                // Dot.
-                DragPoint(
-                    position: $position,
-                    onEnded: {
-                        // Reset to center when drag ended.
-                        withAnimation(Animation.spring) {
-                            position = geometry.center
+                    // Layer border.
+                    .border(.green.opacity(0.2))
+
+                    // MARK: Debug
+
+                    // View.
+                    Rectangle()
+                        .stroke(.gray.opacity(0.5))
+                        .background {
+                            Grid(
+                                rows: Metrics.rows,
+                                columns: Metrics.columns,
+                                color: .gray.opacity(0.2)
+                            )
                         }
-                    }
-                )
-                .blendMode(.multiply)
-            }
+                        .overlay {
+                            Circle()
+                                .stroke(.gray)
+                                .frame(width: 10, height: 10)
+                                .blendMode(.multiply)
+                        }
+                        .frame(size: Metrics.size)
+                        .blendMode(.multiply)
 
-            // Start centered.
-            .onAppear {
-                position = geometry.center
+                    // Target view.
+                    Rectangle()
+                        .stroke(.blue.opacity(0.5))
+                        .frame(size: Metrics.size)
+                        .position(controlPointPosition)
+                        .blendMode(.multiply)
+
+                    // MARK: Dot
+
+                    // Dot.
+                    DragPoint(
+                        position: $controlPointPosition,
+                        onEnded: {
+                            if bouncesBack {
+                                // Reset to center when drag ended.
+                                withAnimation(Animation.spring) {
+                                    controlPointPosition = geometry.center
+                                }
+                            }
+                        }
+                    )
+                    .blendMode(.multiply)
+                }
+
+                // Start centered.
+                .onAppear {
+                    controlPointPosition = geometry.center
+                }
             }
+            .frame(size: Metrics.Layer.size)
+
+            Spacer()
+
+            // MARK: Controls
+
+            Picker("Squish", selection: $squish) {
+                Text("Linear").tag(Squish.linear)
+                Text("Cubic").tag(Squish.cubic)
+                Text("Gaussian").tag(Squish.gaussian)
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                Text("Multiplier (\(multiplier, specifier: "%.2f"))")
+                    .font(.footnote)
+                Spacer()
+                Slider(value: $multiplier, in: 0...1.5)
+                    .frame(width: 200)
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
+            .background(Color(.systemGray6))
+            .cornerRadius(8)
+
+            Toggle("Bounces back", isOn: $bouncesBack)
+                .font(.footnote)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
         }
+        .frame(width: Metrics.Layer.size.width)
     }
 }
 
 // MARK: - Squish
 
+enum Squish {
+
+    case linear
+    case cubic
+    case gaussian
+}
+
 struct AnimatableDistortionModifier: ViewModifier, Animatable {
 
-    var layerCenter: CGPoint
-    var anchorPoint: CGPoint
+    let layerCenter: CGPoint
+    let anchorPoint: CGPoint
     var controlPoint: CGPoint
+    var multiplier: CGFloat
+    let squish: Squish
 
     var animatableData: CGPoint.AnimatableData {
         get { controlPoint.animatableData }
@@ -112,24 +170,48 @@ struct AnimatableDistortionModifier: ViewModifier, Animatable {
     func body(content: Content) -> some View {
         content
             .distortionEffect(
-                ShaderLibrary.squish(
-                    .float2(layerCenter),
-                    .float2(anchorPoint),
-                    .float2(controlPoint)
-                ),
+                shader,
                 maxSampleOffset: .zero
             )
+    }
+
+    var shader: Shader {
+        switch squish {
+        case .linear:
+            ShaderLibrary.squish(
+                .float2(layerCenter),
+                .float2(anchorPoint),
+                .float2(controlPoint),
+                .float(multiplier)
+            )
+        case .cubic:
+            ShaderLibrary.cubicSquish(
+                .float2(layerCenter),
+                .float2(anchorPoint),
+                .float2(controlPoint),
+                .float(multiplier)
+            )
+        case .gaussian:
+            ShaderLibrary.gaussianSquish(
+                .float2(layerCenter),
+                .float2(anchorPoint),
+                .float2(controlPoint),
+                .float(multiplier)
+            )
+        }
     }
 }
 
 extension View {
 
-    func squish(layerCenter: CGPoint, anchorPoint: CGPoint, controlPoint: CGPoint) -> some View {
+    func squish(layerCenter: CGPoint, anchorPoint: CGPoint, controlPoint: CGPoint, multiplier: CGFloat, squish: Squish) -> some View {
         self.modifier(
             AnimatableDistortionModifier(
                 layerCenter: layerCenter,
                 anchorPoint: anchorPoint,
-                controlPoint: controlPoint
+                controlPoint: controlPoint,
+                multiplier: multiplier,
+                squish: squish
             )
         )
     }
