@@ -9,45 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
 
-    @State var controlPointModel = DragPointModel()
-
-    struct Metrics {
-
-        static let rows = 8
-        static let columns = 12
-        static let gridSize = CGSize(width: 20, height: 20)
-
-        struct Layer {
-
-            static let rows = 24
-            static let columns = 18
-
-            static let size = CGSize(
-                width: CGFloat(columns) * Metrics.gridSize.width,
-                height: CGFloat(rows) * Metrics.gridSize.height
-            )
-        }
-
-        static let size = CGSize(
-            width: CGFloat(columns) * gridSize.width,
-            height: CGFloat(rows) * gridSize.height
-        )
-    }
-
-    func shader(geometry: GeometryProxy) -> Shader {
-        let shaderLibrary = ShaderLibrary.default
-        return Shader(
-            function: ShaderFunction(library: shaderLibrary, name: "squish"),
-            arguments: [
-                // layerSize
-                .float2(Metrics.Layer.size.center),
-                // anchorPoint
-                .float2(Metrics.Layer.size.center),
-                // controlPoint
-                .float2(controlPointModel.position - geometry.center)
-            ]
-        )
-    }
+    @State var position = CGPoint.zero
 
     var body: some View {
         GeometryReader { geometry in
@@ -60,25 +22,28 @@ struct ContentView: View {
                     columns: Metrics.columns,
                     color: .green.opacity(0.6)
                 )
-                    .frame(size: Metrics.size)
-                    .background(.green.opacity(0.2))
-                    .frame(size: Metrics.Layer.size)
-                    .background {
-                        Grid(
-                            rows: Metrics.Layer.rows,
-                            columns: Metrics.Layer.columns,
-                            color: .green.opacity(0.2)
-                        )
-                    }
-                    .drawingGroup()
-
-                    // Distorsion.
-                    .distortionEffect(shader(geometry: geometry),
-                        maxSampleOffset: .zero
+                .frame(size: Metrics.size)
+                .background(.green.opacity(0.2))
+                .frame(size: Metrics.Layer.size)
+                .background {
+                    Grid(
+                        rows: Metrics.Layer.rows,
+                        columns: Metrics.Layer.columns,
+                        color: .green.opacity(0.2)
                     )
+                }
+                .drawingGroup()
 
-                    // Layer border.
-                    .border(.green.opacity(0.2))
+                // Distorsion.
+                .squish(
+                    layerCenter: Metrics.Layer.size.center,
+                    anchorPoint: Metrics.Layer.size.center,
+                    controlPoint: position - geometry.center
+                )
+
+
+                // Layer border.
+                .border(.green.opacity(0.2))
 
                 // MARK: Debug
 
@@ -105,18 +70,18 @@ struct ContentView: View {
                 Rectangle()
                     .stroke(.blue.opacity(0.5))
                     .frame(size: Metrics.size)
-                    .position(controlPointModel.position)
+                    .position(position)
                     .blendMode(.multiply)
 
                 // MARK: Dot
 
                 // Dot.
                 DragPoint(
-                    model: $controlPointModel,
+                    position: $position,
                     onEnded: {
                         // Reset to center when drag ended.
                         withAnimation(Animation.spring) {
-                            controlPointModel.position = geometry.center
+                            position = geometry.center
                         }
                     }
                 )
@@ -125,24 +90,61 @@ struct ContentView: View {
 
             // Start centered.
             .onAppear {
-                controlPointModel.position = geometry.center
+                position = geometry.center
             }
         }
     }
 }
 
-struct DragPointModel {
+// MARK: - Squish
 
-    var isDragging = false
-    var dragStartPosition = CGPoint.zero
-    var dragOffset = CGPoint.zero
-    var position = CGPoint.zero
+struct AnimatableDistortionModifier: ViewModifier, Animatable {
+
+    var layerCenter: CGPoint
+    var anchorPoint: CGPoint
+    var controlPoint: CGPoint
+
+    var animatableData: CGPoint.AnimatableData {
+        get { controlPoint.animatableData }
+        set { controlPoint.animatableData = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .distortionEffect(
+                ShaderLibrary.squish(
+                    .float2(layerCenter),
+                    .float2(anchorPoint),
+                    .float2(controlPoint)
+                ),
+                maxSampleOffset: .zero
+            )
+    }
 }
+
+extension View {
+
+    func squish(layerCenter: CGPoint, anchorPoint: CGPoint, controlPoint: CGPoint) -> some View {
+        self.modifier(
+            AnimatableDistortionModifier(
+                layerCenter: layerCenter,
+                anchorPoint: anchorPoint,
+                controlPoint: controlPoint
+            )
+        )
+    }
+}
+
+// MARK: - Views
 
 struct DragPoint: View {
 
-    @Binding var model: DragPointModel
+    @Binding var position: CGPoint
     let onEnded: () -> Void
+
+    @State private var isDragging = false
+    @State private var dragStartPosition = CGPoint.zero
+    @State private var dragOffset = CGPoint.zero
 
     var body: some View {
         Circle()
@@ -154,7 +156,7 @@ struct DragPoint: View {
                     .fill(.blue.opacity(0.8))
                     .frame(width: 5, height: 5)
             }
-            .position(model.position)
+            .position(position)
 
             // Drag.
             .simultaneousGesture(
@@ -162,18 +164,18 @@ struct DragPoint: View {
                     .onChanged { gesture in
 
                         // Update.
-                        if model.isDragging {
-                            model.position = model.dragStartPosition + model.dragOffset + gesture.translation
+                        if isDragging {
+                            position = dragStartPosition + dragOffset + gesture.translation
 
                         // Start.
                         } else {
-                            model.dragStartPosition = gesture.location
-                            model.dragOffset = model.position - gesture.location
-                            model.isDragging = true
+                            dragStartPosition = gesture.location
+                            dragOffset = position - gesture.location
+                            isDragging = true
                         }
                     }
                     .onEnded { _ in
-                        model.isDragging = false
+                        isDragging = false
                         onEnded()
                     }
             )
@@ -205,6 +207,36 @@ struct Grid: View {
         }
     }
 }
+
+// MARK: - Metrics
+
+extension ContentView {
+
+    struct Metrics {
+
+        static let rows = 8
+        static let columns = 12
+        static let gridSize = CGSize(width: 20, height: 20)
+
+        struct Layer {
+
+            static let rows = 24
+            static let columns = 18
+
+            static let size = CGSize(
+                width: CGFloat(columns) * Metrics.gridSize.width,
+                height: CGFloat(rows) * Metrics.gridSize.height
+            )
+        }
+
+        static let size = CGSize(
+            width: CGFloat(columns) * gridSize.width,
+            height: CGFloat(rows) * gridSize.height
+        )
+    }
+}
+
+// MARK: - Extensions
 
 extension GeometryProxy {
 
@@ -255,11 +287,13 @@ extension View {
 struct Animation {
 
     static let spring = SwiftUI.Animation.spring(
-        response: 0.3,
-        dampingFraction: 0.5,
+        response: 0.36,
+        dampingFraction: 0.24,
         blendDuration: 0.0
     )
 }
+
+// MARK: - Preview
 
 #Preview {
     ContentView()
