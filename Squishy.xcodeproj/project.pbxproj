@@ -17,6 +17,7 @@
 		607AE28B2BEF783C00C76486 /* SquishyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquishyApp.swift; sourceTree = "<group>"; };
 		607AE28D2BEF783C00C76486 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		607AE2992BEF78FA00C76486 /* Squish.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Squish.metal; sourceTree = "<group>"; };
+		60A2244D2BF1F35700654DDD /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -33,6 +34,7 @@
 		607AE27F2BEF783C00C76486 = {
 			isa = PBXGroup;
 			children = (
+				60A2244D2BF1F35700654DDD /* README.md */,
 				607AE28A2BEF783C00C76486 /* Squishy */,
 				607AE2892BEF783C00C76486 /* Products */,
 			);
